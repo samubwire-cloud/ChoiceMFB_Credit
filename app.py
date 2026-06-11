@@ -648,7 +648,146 @@ elif "EWS" in page:
             st.plotly_chart(fig_e, use_container_width=True)
 
     with t2:
-        st.info("Upload your loan book on the Portfolio Analytics page for a full EWS scan.")
+        st.markdown("### Portfolio EWS Scan")
+        st.caption("Upload your monthly loan book to scan every account and get a RED / AMBER / GREEN action list.")
+
+        ews_file = st.file_uploader("Upload loan book (.xlsx)", type=["xlsx"], key="ews_upload")
+
+        if ews_file:
+            with st.spinner("Scanning all accounts — please wait..."):
+                try:
+                    ews_bytes = ews_file.read()
+                    xl = pd.ExcelFile(io.BytesIO(ews_bytes))
+                    sheet = xl.sheet_names[1] if len(xl.sheet_names) > 1 else xl.sheet_names[0]
+                    ews_df = None
+                    for hdr in [4, 3, 2, 0]:
+                        try:
+                            tmp = pd.read_excel(io.BytesIO(ews_bytes), sheet_name=sheet, header=hdr)
+                            tmp = tmp.iloc[:, :70].dropna(how="all")
+                            cols_lower = [str(c).lower() for c in tmp.columns]
+                            if any("balance" in c or "amount" in c for c in cols_lower):
+                                ews_df = tmp; break
+                        except Exception:
+                            continue
+                    if ews_df is None:
+                        ews_df = pd.read_excel(io.BytesIO(ews_bytes), sheet_name=sheet, header=4)
+
+                    ews_df.columns = [str(c).strip() for c in ews_df.columns]
+
+                    # Get key columns safely
+                    def safe_col(df, names, default=0):
+                        for n in names:
+                            if n in df.columns:
+                                return pd.to_numeric(df[n], errors="coerce").fillna(default)
+                        return pd.Series([default]*len(df))
+
+                    os_bal   = safe_col(ews_df, ["OS Balance","Outstanding Balance","Balance"], 0)
+                    loan_amt = safe_col(ews_df, ["Loan Amount","Loan amount"], 100000)
+                    arr_days = safe_col(ews_df, ["Arrears Days","Days in Arrears"], 0)
+                    coll_amt = safe_col(ews_df, ["Collateral Amount","Security Value"], 0)
+
+                    REPORT = pd.Timestamp("2026-05-31")
+                    if "Disbursed On" in ews_df.columns:
+                        disb = pd.to_datetime(ews_df["Disbursed On"], errors="coerce")
+                        loan_age = ((REPORT - disb).dt.days / 30.44).fillna(0).clip(0,120)
+                    else:
+                        loan_age = pd.Series([12.0]*len(ews_df))
+
+                    if "Last Repayment Date" in ews_df.columns:
+                        last_pay = pd.to_datetime(ews_df["Last Repayment Date"], errors="coerce")
+                        days_since = ((REPORT - last_pay).dt.days).fillna(90).clip(0,2800)
+                    else:
+                        days_since = arr_days.clip(0,2800)
+
+                    bal_erosion = np.where(loan_amt > 0, os_bal / loan_amt, 1.0).clip(0,2)
+                    ltv_vals    = np.where(coll_amt > 0, os_bal / coll_amt, 2.0).clip(0,5)
+
+                    # Run EWS on every account
+                    results = []
+                    for i in range(len(ews_df)):
+                        e = ews_check(
+                            float(days_since.iloc[i]),
+                            float(bal_erosion[i]),
+                            float(loan_age.iloc[i]),
+                            float(ltv_vals[i])
+                        )
+                        results.append(e)
+
+                    ews_df["EWS Score"] = [r["ews_score"] for r in results]
+                    ews_df["EWS Flag"]  = [r["ews_flag"]  for r in results]
+                    ews_df["Action"]    = [r["ews_action"] for r in results]
+
+                except Exception as ex:
+                    st.error(f"Error reading file: {ex}")
+                    st.stop()
+
+            # Summary banners
+            total = len(ews_df)
+            for flag, color, emoji in [
+                ("RED",    "#FEE2E2", "🔴"),
+                ("AMBER",  "#FFEDD5", "🟠"),
+                ("YELLOW", "#FEF9C3", "🟡"),
+                ("GREEN",  "#DCFCE7", "🟢"),
+            ]:
+                sub = ews_df[ews_df["EWS Flag"] == flag]
+                if len(sub) > 0:
+                    os_v = os_bal[sub.index].sum()
+                    st.markdown(
+                        f'<div style="background:{color};padding:10px 16px;border-radius:8px;'
+                        f'margin-bottom:6px;font-size:13px;font-weight:600">'
+                        f'{emoji} {flag} — {len(sub)} accounts '
+                        f'({len(sub)/total*100:.0f}%)  |  '
+                        f'OS Balance: KES {os_v/1e6:.1f}M</div>',
+                        unsafe_allow_html=True
+                    )
+
+            st.divider()
+
+            # Action required accounts
+            urgent = ews_df[ews_df["EWS Flag"].isin(["RED","AMBER"])].copy()
+            urgent_sorted = urgent.sort_values("EWS Score", ascending=False)
+
+            if len(urgent) > 0:
+                st.subheader(f"⚑ {len(urgent)} Accounts Requiring Immediate Action")
+
+                # Show key columns only
+                display_cols = []
+                for candidate in ["Account Name","Client Name","Account ID",
+                                   "Product Name","OS Balance","Arrears Days",
+                                   "Classification","EWS Score","EWS Flag","Action"]:
+                    if candidate in urgent_sorted.columns:
+                        display_cols.append(candidate)
+
+                st.dataframe(
+                    urgent_sorted[display_cols].reset_index(drop=True),
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+                # Download button
+                buf = io.BytesIO()
+                urgent_sorted[display_cols].to_excel(buf, index=False)
+                st.download_button(
+                    "⬇️ Download Action List (.xlsx)",
+                    buf.getvalue(),
+                    "EWS_Action_List.xlsx",
+                    use_container_width=True
+                )
+            else:
+                st.success("✅ No accounts currently in RED or AMBER. Portfolio looks healthy.")
+
+            # Full results download
+            st.divider()
+            buf2 = io.BytesIO()
+            ews_df[["EWS Score","EWS Flag","Action"]].join(
+                ews_df.drop(columns=["EWS Score","EWS Flag","Action"])
+            ).to_excel(buf2, index=False)
+            st.download_button(
+                "⬇️ Download Full EWS Report (.xlsx)",
+                buf2.getvalue(),
+                "Full_EWS_Report.xlsx",
+                use_container_width=True
+            )
 
 # ══════════════════════════════════════════════════════════════════════════════
 # BATCH PROCESSING
