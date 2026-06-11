@@ -59,17 +59,61 @@ div[data-testid="stFormSubmitButton"]>button{background:#DA2A2F!important;
 </style>
 """, unsafe_allow_html=True)
 
-# ── MOBILE / iPHONE META TAGS ─────────────────────────────────────────────────
-st.markdown("""
-<head>
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Choice MFB">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="theme-color" content="#110837">
-  <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/samubwire-cloud/choice-mfb-credit/main/choice_favicon.png">
-  <link rel="apple-touch-icon-precomposed" href="https://raw.githubusercontent.com/samubwire-cloud/choice-mfb-credit/main/choice_favicon.png">
-</head>
+# ── MOBILE / iPHONE ICON — JavaScript injection ───────────────────────────────
+# Streamlit strips <head> tags from markdown, so we use JS to inject the icon
+ICON_URL = "https://raw.githubusercontent.com/samubwire-cloud/choice-mfb-credit/main/choice_favicon.png"
+
+st.markdown(f"""
+<script>
+(function() {{
+    // Remove any existing apple-touch-icon links
+    var existing = document.querySelectorAll('link[rel*="apple-touch-icon"]');
+    existing.forEach(function(el) {{ el.remove(); }});
+
+    // Inject apple-touch-icon for iPhone home screen
+    var link1 = document.createElement('link');
+    link1.rel = 'apple-touch-icon';
+    link1.sizes = '180x180';
+    link1.href = '{ICON_URL}';
+    document.head.appendChild(link1);
+
+    // Precomposed version (no shine effect)
+    var link2 = document.createElement('link');
+    link2.rel = 'apple-touch-icon-precomposed';
+    link2.href = '{ICON_URL}';
+    document.head.appendChild(link2);
+
+    // Standard favicon
+    var link3 = document.createElement('link');
+    link3.rel = 'shortcut icon';
+    link3.href = '{ICON_URL}';
+    document.head.appendChild(link3);
+
+    // PWA theme colour (status bar on iPhone)
+    var meta1 = document.createElement('meta');
+    meta1.name = 'theme-color';
+    meta1.content = '#110837';
+    document.head.appendChild(meta1);
+
+    // Make it behave like a full-screen app on iPhone
+    var meta2 = document.createElement('meta');
+    meta2.name = 'apple-mobile-web-app-capable';
+    meta2.content = 'yes';
+    document.head.appendChild(meta2);
+
+    var meta3 = document.createElement('meta');
+    meta3.name = 'apple-mobile-web-app-title';
+    meta3.content = 'Choice MFB';
+    document.head.appendChild(meta3);
+
+    var meta4 = document.createElement('meta');
+    meta4.name = 'apple-mobile-web-app-status-bar-style';
+    meta4.content = 'black-translucent';
+    document.head.appendChild(meta4);
+
+    console.log('Choice MFB: iPhone icons injected');
+}})();
+</script>
 """, unsafe_allow_html=True)
 
 # ── BANK CONFIG ───────────────────────────────────────────────────────────────
