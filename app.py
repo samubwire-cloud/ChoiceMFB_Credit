@@ -681,35 +681,47 @@ elif "EWS" in page:
                                 return pd.to_numeric(df[n], errors="coerce").fillna(default)
                         return pd.Series([default]*len(df))
 
-                    os_bal   = safe_col(ews_df, ["OS Balance","Outstanding Balance","Balance"], 0)
-                    loan_amt = safe_col(ews_df, ["Loan Amount","Loan amount"], 100000)
-                    arr_days = safe_col(ews_df, ["Arrears Days","Days in Arrears"], 0)
-                    coll_amt = safe_col(ews_df, ["Collateral Amount","Security Value"], 0)
+                    # Reset index to ensure all series align
+                    ews_df = ews_df.reset_index(drop=True)
+                    n = len(ews_df)
+
+                    os_bal   = safe_col(ews_df, ["OS Balance","Outstanding Balance","Balance"], 0).reset_index(drop=True)
+                    loan_amt = safe_col(ews_df, ["Loan Amount","Loan amount"], 100000).reset_index(drop=True)
+                    arr_days = safe_col(ews_df, ["Arrears Days","Days in Arrears"], 0).reset_index(drop=True)
+                    coll_amt = safe_col(ews_df, ["Collateral Amount","Security Value"], 0).reset_index(drop=True)
 
                     REPORT = pd.Timestamp("2026-05-31")
                     if "Disbursed On" in ews_df.columns:
                         disb = pd.to_datetime(ews_df["Disbursed On"], errors="coerce")
-                        loan_age = ((REPORT - disb).dt.days / 30.44).fillna(0).clip(0,120)
+                        loan_age = ((REPORT - disb).dt.days / 30.44).fillna(12.0).clip(0,120).reset_index(drop=True)
                     else:
-                        loan_age = pd.Series([12.0]*len(ews_df))
+                        loan_age = pd.Series([12.0]*n)
 
                     if "Last Repayment Date" in ews_df.columns:
                         last_pay = pd.to_datetime(ews_df["Last Repayment Date"], errors="coerce")
-                        days_since = ((REPORT - last_pay).dt.days).fillna(90).clip(0,2800)
+                        days_since = ((REPORT - last_pay).dt.days).fillna(90).clip(0,2800).reset_index(drop=True)
                     else:
                         days_since = arr_days.clip(0,2800)
 
-                    bal_erosion = np.where(loan_amt > 0, os_bal / loan_amt, 1.0).clip(0,2)
-                    ltv_vals    = np.where(coll_amt > 0, os_bal / coll_amt, 2.0).clip(0,5)
+                    # Compute derived signals safely element-wise
+                    bal_erosion = pd.Series([
+                        float(os_bal.iloc[i] / loan_amt.iloc[i]) if loan_amt.iloc[i] > 0 else 1.0
+                        for i in range(n)
+                    ]).clip(0, 2)
+
+                    ltv_vals = pd.Series([
+                        float(os_bal.iloc[i] / coll_amt.iloc[i]) if coll_amt.iloc[i] > 0 else 2.0
+                        for i in range(n)
+                    ]).clip(0, 5)
 
                     # Run EWS on every account
                     results = []
-                    for i in range(len(ews_df)):
+                    for i in range(n):
                         e = ews_check(
                             float(days_since.iloc[i]),
-                            float(bal_erosion[i]),
+                            float(bal_erosion.iloc[i]),
                             float(loan_age.iloc[i]),
-                            float(ltv_vals[i])
+                            float(ltv_vals.iloc[i])
                         )
                         results.append(e)
 
