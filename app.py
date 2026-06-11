@@ -16,7 +16,7 @@ warnings.filterwarnings("ignore")
 # ── PAGE CONFIG ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Choice MFB Credit Intelligence",
-    page_icon="🏦",
+    page_icon="https://raw.githubusercontent.com/samubwire-cloud/choice-mfb-credit/main/choice_favicon.png",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -57,6 +57,19 @@ div[data-testid="stFormSubmitButton"]>button{background:#DA2A2F!important;
 .dec-decline{background:#FEE2E2;color:#7F1D1D;border:1.5px solid #DC2626;
   border-radius:10px;padding:14px 20px;font-size:16px;font-weight:700;margin:12px 0;}
 </style>
+""", unsafe_allow_html=True)
+
+# ── MOBILE / iPHONE META TAGS ─────────────────────────────────────────────────
+st.markdown("""
+<head>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Choice MFB">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#110837">
+  <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/samubwire-cloud/choice-mfb-credit/main/choice_favicon.png">
+  <link rel="apple-touch-icon-precomposed" href="https://raw.githubusercontent.com/samubwire-cloud/choice-mfb-credit/main/choice_favicon.png">
+</head>
 """, unsafe_allow_html=True)
 
 # ── BANK CONFIG ───────────────────────────────────────────────────────────────
